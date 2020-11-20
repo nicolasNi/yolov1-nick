@@ -60,16 +60,26 @@ class yoloDataset(data.Dataset):
         self.show_img(img, boxes, 'original')
 
         if self.train:
-            # img, boxes = self.random_flip(img, boxes)
-            # img, boxes = self.random_scale(img, boxes)
-            # img = self.random_blur(img)
-            # img = self.random_brightness(img)
-            # img = self.random_hue(img)
-            # img = self.random_saturation(img)
-            # img, boxes, labels = self.random_shift(img, boxes, labels)
+            img, boxes = self.random_flip(img, boxes)
+            img, boxes = self.random_scale(img, boxes)
+            img = self.random_blur(img)
+            img = self.random_brightness(img)
+            img = self.random_hue(img)
+            img = self.random_saturation(img)
+            img, boxes, labels = self.random_shift(img, boxes, labels)
             img, boxes, labels = self.random_crop(img, boxes, labels)
             self.show_img(img, boxes, 'random_shift')
-            a = 10
+
+        h, w, _ = img.shape
+        boxes /= torch.Tensor([w, h, w, h]).expand_as(boxes)
+        img = self.BGR2RGB(img)
+        img = self.subMean(img, self.mean)
+        img = cv2.resize(img, (self.image_size, self.image_size))
+        target = self.encoder(boxes, labels)
+        for t in self.transform:
+            img = t(img)
+        return img, target
+
 
     def __len__(self):
         return self.num_sample
@@ -187,35 +197,37 @@ class yoloDataset(data.Dataset):
         return bgr, boxes, labels
 
     def random_crop(self, bgr, boxes, labels):
-        center = (boxes[:, 2:] + boxes[:, :2]) / 2
-        height, width, c = bgr.shape
-        h = random.uniform(0.6 * height, height)
-        w = random.uniform(0.6 * width, width)
-        x = random.uniform(0, width - w)
-        y = random.uniform(0, height - h)
-        x, y, h, w = int(x), int(y), int(h), int(w)
+        if random.random() < 0.5:
+            center = (boxes[:, 2:] + boxes[:, :2]) / 2
+            height, width, c = bgr.shape
+            h = random.uniform(0.6 * height, height)
+            w = random.uniform(0.6 * width, width)
+            x = random.uniform(0, width - w)
+            y = random.uniform(0, height - h)
+            x, y, h, w = int(x), int(y), int(h), int(w)
 
-        center = center - torch.FloatTensor([[x, y]]).expand_as(center)
-        mask1 = (center[:, 0] > 0) & (center[:, 0] < w)
-        mask2 = (center[:, 1] > 0) & (center[:, 1] < h)
-        mask = (mask1 & mask2).view(-1, 1)
+            center = center - torch.FloatTensor([[x, y]]).expand_as(center)
+            mask1 = (center[:, 0] > 0) & (center[:, 0] < w)
+            mask2 = (center[:, 1] > 0) & (center[:, 1] < h)
+            mask = (mask1 & mask2).view(-1, 1)
 
-        boxes_in = boxes[mask.expand_as(boxes)].view(-1, 4)
-        if (len(boxes_in) == 0):
-            return bgr, boxes, labels
-        box_shift = torch.FloatTensor([[x, y, x, y]]).expand_as(boxes_in)
+            boxes_in = boxes[mask.expand_as(boxes)].view(-1, 4)
+            if (len(boxes_in) == 0):
+                return bgr, boxes, labels
+            box_shift = torch.FloatTensor([[x, y, x, y]]).expand_as(boxes_in)
 
-        boxes_in = boxes_in - box_shift
-        # boxes_in[:, 0] = boxes_in[:, 0].clamp_(min=0, max=w)
-        # boxes_in[:, 2] = boxes_in[:, 2].clamp_(min=0, max=w)
-        # boxes_in[:, 1] = boxes_in[:, 1].clamp_(min=0, max=h)
-        # boxes_in[:, 3] = boxes_in[:, 3].clamp_(min=0, max=h)
-        boxes_in[:, [0, 2]] = torch.clamp(boxes_in[:, [0, 2]], 0, w)
-        boxes_in[:, [1, 3]] = torch.clamp(boxes_in[:, [1, 3]], 0, h)
+            boxes_in = boxes_in - box_shift
+            # boxes_in[:, 0] = boxes_in[:, 0].clamp_(min=0, max=w)
+            # boxes_in[:, 2] = boxes_in[:, 2].clamp_(min=0, max=w)
+            # boxes_in[:, 1] = boxes_in[:, 1].clamp_(min=0, max=h)
+            # boxes_in[:, 3] = boxes_in[:, 3].clamp_(min=0, max=h)
+            boxes_in[:, [0, 2]] = torch.clamp(boxes_in[:, [0, 2]], 0, w)
+            boxes_in[:, [1, 3]] = torch.clamp(boxes_in[:, [1, 3]], 0, h)
 
-        labels_in = labels[mask.view(-1)]
-        img_croped = bgr[y:y + h, x:x + w, :]
-        return img_croped, boxes_in, labels_in
+            labels_in = labels[mask.view(-1)]
+            img_croped = bgr[y:y + h, x:x + w, :]
+            return img_croped, boxes_in, labels_in
+        return bgr, boxes, labels
 
     def show_img(self, img, boxes, name):
         im = img.copy()
@@ -229,11 +241,36 @@ class yoloDataset(data.Dataset):
         cv2.imshow(name, im)
         cv2.waitKey()
 
+    def subMean(self, bgr, mean):
+        mean = np.array(mean, dtype=np.float32)
+        bgr = bgr - mean
+        return bgr
+
+    def encoder(self, boxes, labels):
+        grid_num = 14
+        target = torch.zeros((grid_num, grid_num, 30))
+        cell_size = 1. / grid_num
+        wh = boxes[:, 2:] - boxes[:, :2]
+        cxcy = (boxes[:, :2] + boxes[:, 2:]) / 2
+        for i in range(boxes.size()[0]):
+            cxcy_sample = cxcy[i]
+            ij = (cxcy_sample / cell_size).ceil() - 1
+            target[int(ij[1]), int(ij[0]), 4] = 1
+            target[int(ij[1]), int(ij[0]), 9] = 1
+            target[int(ij[1]), int(ij[0]), int(labels[i]) + 9] = 1
+
+            xy = ij * cell_size  # 匹配到的网格的左上角相对坐标
+            delta_xy = (cxcy_sample - xy) / cell_size
+            target[int(ij[1]), int(ij[0]), 2:4] = wh[i]
+            target[int(ij[1]), int(ij[0]), :2] = delta_xy
+            target[int(ij[1]), int(ij[0]), 7:9] = wh[i]
+            target[int(ij[1]), int(ij[0]), 5:7] = delta_xy
+        return target
 
 def main():
     file_root = '/mnt/d2/公共训练数据/JPEGImages/'
     train_dataset = yoloDataset(root=file_root, list_file=['voc2012.txt', 'voc2007.txt'], train=True, transform=[transforms.ToTensor()])
-    train_loader = data.DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=4)
+    train_loader = data.DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
     for i, (images, target) in enumerate(train_loader):
         images = Variable(images)
         target = Variable(target)
