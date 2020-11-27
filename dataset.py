@@ -57,7 +57,7 @@ class yoloDataset(data.Dataset):
         boxes = self.boxes[idx].clone()
         labels = self.labels[idx].clone()
 
-        self.show_img(img, boxes, 'original')
+        # self.show_img(img, boxes, 'original')
 
         if self.train:
             img, boxes = self.random_flip(img, boxes)
@@ -68,7 +68,7 @@ class yoloDataset(data.Dataset):
             img = self.random_saturation(img)
             img, boxes, labels = self.random_shift(img, boxes, labels)
             img, boxes, labels = self.random_crop(img, boxes, labels)
-            self.show_img(img, boxes, 'random_shift')
+            # self.show_img(img, boxes, 'random_shift')
 
         h, w, _ = img.shape
         boxes /= torch.Tensor([w, h, w, h]).expand_as(boxes)
@@ -238,8 +238,8 @@ class yoloDataset(data.Dataset):
             point1 = (box[0], box[1])
             point2 = (box[2], box[3])
             cv2.rectangle(im, point1, point2, point_color, thickness, lineType)
-        cv2.imshow(name, im)
-        cv2.waitKey()
+        # cv2.imshow(name, im)
+        # cv2.waitKey()
 
     def subMean(self, bgr, mean):
         mean = np.array(mean, dtype=np.float32)

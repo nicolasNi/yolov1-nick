@@ -41,12 +41,25 @@ from resnet_yolo import resnet50, resnet18
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 vgg = models.vgg16().to(device)
 
-#
-# net = resnet50().to(device)
-# resnet = models.resnet50(pretrained=True).to(device)
-# summary(resnet,(3, 224, 224))
 
-
-net = models.resnet18().to(device)
-summary(net,(3,224,224))
+net = resnet50().to(device)
+resnet = models.resnet50(pretrained=True).to(device)
+# summary(net,(3, 448, 448))
 # print(net)
+
+new_state_dict = resnet.state_dict()
+dd = net.state_dict()
+# for k in dd.keys():
+#     print(k)
+
+
+# net = models.resnet50().to(device)
+# # summary(net,(3,224,224))
+# summary(net,(3,448,448))
+# # print(net)
+
+
+params = []
+params_dict = dict(resnet.named_parameters())
+for key, value in params_dict.items():
+    print(key)
