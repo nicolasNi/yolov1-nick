@@ -9,9 +9,12 @@ from resnet_yolo import resnet50, resnet18
 from yoloLoss import yoloLoss
 from dataset import yoloDataset
 import numpy as np
+from tensorboardX import SummaryWriter
 
+write = SummaryWriter(comment='nick-yolo1')
 use_gpu = torch.cuda.is_available()
 file_root = '/mnt/d2/公共训练数据/JPEGImages/'
+file_root = '/mnt/wwn-0x5000039fe6f44156-part3/公共训练数据/JPEGImages/'
 
 learning_rate = 0.001
 num_epochs = 50
@@ -84,6 +87,7 @@ for epoch in range(num_epochs):
         if (i + 1) % 5 == 0:
             print('train : Epoch [%d/%d], Iter [%d/%d] Loss: %.4f, average_loss: %.4f' % (
             epoch + 1, num_epochs, i + 1, len(train_loader), loss.item(), total_loss / (i + 1)))
+            write.add_scalar('trainingLoss', total_loss / (i + 1), epoch * len(train_loader) + i)
 
     # validation
     torch.cuda.empty_cache()
@@ -102,7 +106,7 @@ for epoch in range(num_epochs):
                 # print('Epoch [%d/%d], Iter [%d/%d] Loss: %.4f, average_loss: %.4f' % (epoch + 1, num_epochs, i + 1, len(train_loader), loss.data[0], total_loss / (i + 1)))
                 print('test : Epoch [%d/%d], Iter [%d/%d] Loss: %.4f, average_loss: %.4f' % (
                 epoch + 1, num_epochs, i + 1, len(test_loader), loss.item(), validation_loss / (i + 1)))
-
+                write.add_scalar('validationLoss', validation_loss / (i + 1), epoch * len(test_loader) + i)
         validation_loss /= len(test_loader)
 
 
